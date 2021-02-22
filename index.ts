@@ -3,7 +3,7 @@ import * as WebSocket from 'ws'
 import axios from 'axios';
 export {Bot}
 
-export interface author {
+export interface Author {
     userId: string
     username: string
     tag: string
@@ -21,27 +21,68 @@ export interface SendEmbedConfig {
     title: string
     description: string
     tts: boolean
+    fields?: string
 }
 
-export interface message {
+export interface Message {
     channelId: string
     content: string
-    author: author
+    author: Author
     time: string, 
-    token: string
+    token: string,
+    guildId: string
 }
 
+export interface Channel {
+    channelId: string
+    channelType: string
+    name: string
+    nsfw: boolean
+}
+
+export interface Guild {
+    guildId: string,
+    name: string,
+    icon: string,
+    splash: string,
+    ownerId: string,
+    roles: JSON,
+    region: string,
+    Description: string
+}
 
 class Bot extends EventEmitter {
+
     ws: WebSocket
     token: string
     
-    run(token) {
+    async run(token: string) {
         this.token = token
         this.ws = new WebSocket("wss://gateway.discord.gg/?v=6&encoding=json");
         this.ws.onmessage = (response) => this.onmsg.apply(this, [response])
+        this.ws.onclose = () => this.login.apply(this)
     }
 
+    async getChannel(id: string): Promise<Channel> {
+        try {
+            let response = await axios.get("https://discord.com/api/v8/channels/"+id, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'authorization': 'Bot ' + this.token
+                }
+            })  
+                let json = response.data
+                let outChannel: Channel = {
+                    name: json.name,
+                    channelType: json.type,
+                    nsfw: json.nsfw,
+                    channelId: json.id
+                } 
+                return outChannel
+            } catch (error) {
+            console.log(error)
+        }
+    }
     login() {
         let msg = {
             "token": this.token,
@@ -69,9 +110,6 @@ class Bot extends EventEmitter {
                 'authorization': 'Bot ' + this.token
             }
         })
-        .then(function (response) {
-            console.log(response);
-        })
         .catch(function (response) {
             console.log(response);
         });
@@ -84,9 +122,10 @@ class Bot extends EventEmitter {
             data: {
                 "embed": {
                     "title": c.title,
-                    "description": c.description
+                    "description": c.description,
+                    "fields": JSON.parse(c.fields),
+                    "tts": false,
                 },
-                "tts": false,
             },
             headers: {
                 'Content-Type': 'application/json',
@@ -107,18 +146,19 @@ class Bot extends EventEmitter {
         } else if (json.op == 0) { 
             if (json.t == "MESSAGE_CREATE") {
                 let out = json.d
-                let messageAuthor: author = {
+                let messageAuthor: Author = {
                     userId: out.author.id,
                     username: out.author.username,
                     tag: out.author.discriminator,
                     avatarID: out.author.avatar
                 }
-                let response: message = {
+                let response: Message = {
                     channelId: out.channel_id,
                     content: out.content,
                     author: messageAuthor,
                     time: out.timestamp,
-                    token: this.token
+                    token: this.token,
+                    guildId: out.guild_id
                 }
                 this.emit('message', response)
             }
